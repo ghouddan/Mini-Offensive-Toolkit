@@ -6,10 +6,20 @@ from datetime import datetime
 import concurrent.futures
 
 
+# Common port-to-service mapping
+SERVICE_MAP = {
+    21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP", 53: "DNS",
+    80: "HTTP", 110: "POP3", 135: "RPC", 139: "NetBIOS", 143: "IMAP",
+    443: "HTTPS", 445: "SMB", 993: "IMAPS", 995: "POP3S", 1433: "MSSQL",
+    3389: "RDP", 5432: "PostgreSQL", 3306: "MySQL", 6379: "Redis",
+    8080: "HTTP-Alt", 8443: "HTTPS-Alt", 9200: "Elasticsearch"
+}
+
+
 def parse_port_range(range_str):
     if '-' in range_str:
         start, end = map(int, range_str.split('-'))
-        return list(range(start, end + 1))  # Fixed: was 'rang'
+        return list(range(start, end + 1))
     elif ',' in range_str:
         return list(map(int, range_str.split(',')))
     else:
@@ -23,18 +33,72 @@ def parse_ip_address(ip_str):
     except ValueError as e:
         print(f"Invalid CIDR: {e}")
         return []
-        
 
-def scan_single_port(target, port):
-    """Scan a single port and return the result"""
+
+def get_service_name(port):
+    """Get service name for a port"""
+    return SERVICE_MAP.get(port, "Unknown")
+
+
+def grab_banner(sock, port):
+    """Grab banner from an open socket"""
+    try:
+        # Set a shorter timeout for banner grabbing
+        sock.settimeout(2)
+        
+        # Send appropriate probe based on port
+        if port in [80, 8080, 8000]:
+            # HTTP probe
+            sock.send(b"GET / HTTP/1.1\r\nHost: target\r\n\r\n")
+        elif port == 21:
+            # FTP - just wait for welcome message
+            pass
+        elif port == 25:
+            # SMTP probe
+            sock.send(b"HELO test\r\n")
+        elif port == 22:
+            # SSH - just wait for banner
+            pass
+        else:
+            # Generic probe for other services
+            sock.send(b"\r\n")
+        
+        # Try to receive banner
+        banner = sock.recv(1024).decode('utf-8', errors='ignore').strip()
+        
+        # Clean up banner (first line only, max 100 chars)
+        if banner:
+            banner = banner.split('\n')[0].split('\r')[0][:100]
+            return banner if banner else "No banner"
+        else:
+            return "No banner"
+            
+    except socket.timeout:
+        return "Timeout"
+    except Exception:
+        return "Error"
+
+
+def scan_port_and_get_banner(target, port):
+    """Scan a port and get banner if open"""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(3)
+        
+        # Check if port is open
         result = s.connect_ex((target, port))
-        s.close()
-        return result == 0
+        
+        if result == 0:  # Port is open
+            service = get_service_name(port)
+            banner = grab_banner(s, port)
+            s.close()
+            return port, True, service, banner
+        else:
+            s.close()
+            return port, False, "", ""
+            
     except Exception:
-        return False
+        return port, False, "", ""
 
 
 def display_banner(target, port_count):
@@ -46,12 +110,6 @@ def display_banner(target, port_count):
     print(f"Scanning {port_count} ports")
     print(f"Starting scan at: {datetime.now()}")
     print('-' * 60)
-
-
-def scan_port_with_result(target, port):
-    """Wrapper function that returns port and result"""
-    result = scan_single_port(target, port)
-    return port, result
 
 
 def port_scanner(target, range_str):
@@ -72,22 +130,22 @@ def port_scanner(target, range_str):
             # Display banner
             display_banner(ip, len(ports))
             
-            open_ports = []
+            open_ports_info = []
             
             # Use ThreadPoolExecutor for concurrent scanning
             with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
-                # Submit all scanning tasks
+                # Submit all scanning tasks (now includes banner grabbing)
                 future_to_port = {
-                    executor.submit(scan_port_with_result, ip, port): port 
+                    executor.submit(scan_port_and_get_banner, ip, port): port 
                     for port in ports
                 }
                 
                 # Collect results as they complete
                 completed = 0
                 for future in concurrent.futures.as_completed(future_to_port):
-                    port, is_open = future.result()
+                    port, is_open, service, banner = future.result()
                     if is_open:
-                        open_ports.append(port)
+                        open_ports_info.append((port, service, banner))
                     
                     # Simple progress indicator
                     completed += 1
@@ -99,11 +157,18 @@ def port_scanner(target, range_str):
             print(f"SCAN RESULTS FOR {ip}")
             print('=' * 60)
             
-            if open_ports:
-                open_ports.sort()  # Sort ports for better readability
-                print(f"Open ports ({len(open_ports)}):")
-                for port in open_ports:
-                    print(f"  Port {port} is OPEN")
+            if open_ports_info:
+                # Sort by port number
+                open_ports_info.sort(key=lambda x: x[0])
+                print(f"Open ports ({len(open_ports_info)}):")
+                print()
+                
+                # Display with formatting
+                for port, service, banner in open_ports_info:
+                    service_info = f"[{service}]" if service != "Unknown" else ""
+                    banner_info = f" - {banner}" if banner and banner not in ["No banner", "Timeout", "Error"] else ""
+                    
+                    print(f"  Port {port:<5} {service_info:<15} OPEN{banner_info}")
             else:
                 print("No open ports found")
             
