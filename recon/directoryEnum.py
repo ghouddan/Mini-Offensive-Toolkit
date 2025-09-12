@@ -3,6 +3,11 @@ import concurrent.futures
 import pyfiglet
 import sys 
 from datetime import datetime
+import itertools
+
+
+
+
 def pars_word_list(file_path):
     parsed_word_list=[]
     with open(file_path, 'r') as file:
@@ -10,7 +15,10 @@ def pars_word_list(file_path):
             parsed_word_list.append(line.strip())
     return parsed_word_list
 
-def send_request(url,directory):
+def send_request(url,directory,extention=""):
+    if extention:
+        directory = f"{directory}.{extention}"
+
     full_url = f"{url}/{directory}"
     try:
         response = requests.get(full_url, timeout=5)
@@ -29,8 +37,10 @@ def send_request(url,directory):
     except Exception as e:
         return full_url, "ERROR", f"Unexpected error: {str(e)}"
 
-def directory_enum(target_url, word_list_path):
-    directorys = pars_word_list(word_list_path)
+def directory_enum(target_url, word_list_path,extention=None):
+    directory_list = pars_word_list(word_list_path)
+    if extention is None:
+        extention = [""]
 
     print("=" * 60)
     asscii_banner = pyfiglet.figlet_format("DirEnum")
@@ -42,8 +52,8 @@ def directory_enum(target_url, word_list_path):
     print(f"Started at: {datetime.now()}")
     print("=" * 60)
     
-    total_directory = len(directorys)
-    print(f"Loaded {total_directory} subdomains from wordlist")
+    directories = len(directory_list)
+    print(f"Loaded {directories} subdomains from wordlist")
     print("Starting enumeration...")
     print("-" * 60)
     found_directory =[]
@@ -52,8 +62,9 @@ def directory_enum(target_url, word_list_path):
     try :
         with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
             future_to_direcotory = {
-                executor.submit(send_request,target_url,directory) : directory for directory in directorys
-            }
+                    executor.submit(send_request, target_url, directory, extention): (directory, extention)
+                    for directory, extention in itertools.product(directory_list, extention)            
+                }
             for Future in concurrent.futures.as_completed(future_to_direcotory):
                 directory = future_to_direcotory[Future]
                 completed += 1
@@ -61,7 +72,7 @@ def directory_enum(target_url, word_list_path):
                     url , status_code, message = Future.result()
                     if status_code == 200 or status_code== 403 or 'Redirect' in message:
                         found_directory.append((url, status_code, message))
-                        print(f"[{completed}/{len(directorys)}] {url} - {status_code} - {message}")
+                        print(f"[{completed}/{len(directory_list)}] {url} - {status_code} - {message}")
 
                 except Exception as e :
                     print(f"Error occurred for directory {directory}: {str(e)}")
@@ -72,13 +83,13 @@ def directory_enum(target_url, word_list_path):
     print("\n" + "=" * 60)
     print("ENUMERATION COMPLETE")
     print("=" * 60)
-    print(f"Total subdomains tested: {total_directory}")
-    print(f"Found subdomains: {len(found_directory)}")
+    print(f"Total directories tested: {directories}")
+    print(f"Found directories: {len(found_directory)}")
     print(f"Completed at: {datetime.now()}")
     
 
     if found_directory:
-        print("\nDISCOVERED SUBDOMAINS:")
+        print("\nDISCOVERED DIRECTORIES:")
         print("-" * 60)
 
         for url, status_code, message in found_directory:
@@ -92,4 +103,5 @@ def directory_enum(target_url, word_list_path):
 if __name__ == "__main__":
     path="/home/mo/Desktop/Offensive-ToolKit/recon/wordlist.txt"
     url="https://google.com"
-    directory_enum(url,path)
+    extention=["php","html"]
+    directory_enum(url,path,extention)
