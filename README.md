@@ -18,7 +18,7 @@ Implemented with Python socket-based scanning.
 
 Includes basic banner grabbing to capture server headers/service banners.
 
-Next steps: add lightweight vulnerability heuristics and passive fingerprinting.
+**Next steps**: add lightweight vulnerability heuristics and passive fingerprinting.
 
 #### Subdomain enumerator
 
@@ -26,7 +26,7 @@ Wordlist-driven discovery using HTTP probes.
 
 Uses concurrent workers (threading) to speed enumeration.
 
-Next steps: integrate passive OSINT sources and result deduplication.
+**Next steps**: integrate passive OSINT sources and result deduplication.
 
 #### Directory brute-forcer
 
@@ -34,4 +34,4 @@ Directory and file enumeration against web targets using concurrent HTTP request
 
 Supports basic wordlists and customizable paths.
 
-Next steps: add response fingerprinting (to reduce false positives) and respect robots.txt by default.
+**Next steps**: add response fingerprinting (to reduce false positives) and respect robots.txt by default.
