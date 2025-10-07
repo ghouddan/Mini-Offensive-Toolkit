@@ -8,7 +8,7 @@ Important: This repository is for use in isolated lab environments you own or ex
 
 
 
-## Current tools (Recon phase)
+## Current tools (Recon phase)
 
 These are the modules I’ve implemented so far:
 
